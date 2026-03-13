@@ -22,4 +22,5 @@ if (empty($magentoRoot)) {
 
 define('MAGENTO_ROOT', $magentoRoot);
 
+require_once(MAGENTO_ROOT . '/app/Mage.php' );
 require_once 'AbstractTest.php';

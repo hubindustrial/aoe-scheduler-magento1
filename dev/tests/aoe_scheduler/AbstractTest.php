@@ -8,7 +8,6 @@ abstract class AbstractTest extends \PHPUnit\Framework\TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        require_once(MAGENTO_ROOT . '/app/Mage.php' );
         Mage::app();
 
         // delete all schedules

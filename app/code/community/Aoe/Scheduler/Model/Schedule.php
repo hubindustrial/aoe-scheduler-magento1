@@ -518,6 +518,24 @@ class Aoe_Scheduler_Model_Schedule extends Mage_Cron_Model_Schedule
     }
 
     /**
+     * Fail this process if it is still alive.
+     *
+     * For use when process execution is about to terminate and the schedule
+     * is actively processing jobs.
+     */
+    public function die(): void
+    {
+        if (!$this->isAlive()) {
+            return;
+        }
+
+        $this
+            ->setStatus(Aoe_Scheduler_Model_Schedule::STATUS_DIED)
+            ->setFinishedAt(date(Varien_Db_Adapter_Pdo_Mysql::TIMESTAMP_FORMAT))
+            ->save();
+    }
+
+    /**
      * Log message to configured log file (or skip)
      *
      * @param $message
