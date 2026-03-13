@@ -5,7 +5,7 @@
   "description": "Magento Cron Scheduler",
   "homepage": "https://github.com/AOEpeople/Aoe_Scheduler",
   "require": {
-    "php": "^8.0",
+    "php": "^8.1",
     "ext-mbstring": "*",
     "ext-pdo": "*",
     "ext-posix": "*",
