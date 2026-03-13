@@ -1,1 +1,10 @@
-phpunit*.phar
+# Composer
+/vendor/
+composer.lock
+
+# Magento root for dev
+/htdocs/
+
+# PHPUnit
+.phpunit.result.cache
+phpunit.xml
