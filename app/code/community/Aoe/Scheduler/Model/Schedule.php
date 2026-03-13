@@ -42,30 +42,30 @@
 class Aoe_Scheduler_Model_Schedule extends Mage_Cron_Model_Schedule
 {
     // if a job returns 'repeat' it will be re-executed right away
-    const STATUS_REPEAT = 'repeat';
+    public const STATUS_REPEAT = 'repeat';
 
-    const STATUS_KILLED = 'killed';
-    const STATUS_DISAPPEARED = 'gone';
-    const STATUS_DIDNTDOANYTHING = 'nothing';
+    public const STATUS_KILLED = 'killed';
+    public const STATUS_DISAPPEARED = 'gone';
+    public const STATUS_DIDNTDOANYTHING = 'nothing';
 
-    const STATUS_SKIP_OTHERJOBRUNNING = 'other_job_running';
-    const STATUS_SKIP_WRONGUSER = 'wrong_user';
-    const STATUS_SKIP_PILINGUP = 'skipped';
+    public const STATUS_SKIP_OTHERJOBRUNNING = 'other_job_running';
+    public const STATUS_SKIP_WRONGUSER = 'wrong_user';
+    public const STATUS_SKIP_PILINGUP = 'skipped';
 
-    const STATUS_DIED = 'died'; // note that died != killed
+    public const STATUS_DIED = 'died'; // note that died != killed
 
-    const REASON_RUNNOW_WEB = 'run_now_web';
-    const REASON_SCHEDULENOW_WEB = 'schedule_now_web';
-    const REASON_RUNNOW_CLI = 'run_now_cli';
-    const REASON_SCHEDULENOW_CLI = 'schedule_now_cli';
-    const REASON_RUNNOW_API = 'run_now_api';
-    const REASON_SCHEDULENOW_API = 'schedule_now_api';
-    const REASON_GENERATESCHEDULES = 'generate_schedules';
-    const REASON_DEPENDENCY_ALL = 'dependency_all';
-    const REASON_DEPENDENCY_SUCCESS = 'dependency_success';
-    const REASON_DEPENDENCY_FAILURE = 'dependency_failure';
-    const REASON_ALWAYS = 'always';
-    const REASON_REPEAT = 'repeat';
+    public const REASON_RUNNOW_WEB = 'run_now_web';
+    public const REASON_SCHEDULENOW_WEB = 'schedule_now_web';
+    public const REASON_RUNNOW_CLI = 'run_now_cli';
+    public const REASON_SCHEDULENOW_CLI = 'schedule_now_cli';
+    public const REASON_RUNNOW_API = 'run_now_api';
+    public const REASON_SCHEDULENOW_API = 'schedule_now_api';
+    public const REASON_GENERATESCHEDULES = 'generate_schedules';
+    public const REASON_DEPENDENCY_ALL = 'dependency_all';
+    public const REASON_DEPENDENCY_SUCCESS = 'dependency_success';
+    public const REASON_DEPENDENCY_FAILURE = 'dependency_failure';
+    public const REASON_ALWAYS = 'always';
+    public const REASON_REPEAT = 'repeat';
 
     /**
      * Event name prefix for events that are dispatched by this class
