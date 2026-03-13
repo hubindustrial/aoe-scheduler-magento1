@@ -133,9 +133,9 @@ class Aoe_Scheduler_Model_Schedule extends Mage_Cron_Model_Schedule implements A
     /**
      * Backup of the original error settings
      *
-     * @var array
+     * @var null|array{error_handler?: callable, error_reporting?: string, log_errors?: string, display_errors?: string, error_log?: string}
      */
-    protected $errorSettingsBackup = array();
+    protected $errorSettingsBackup = null;
 
 
     /**
@@ -691,25 +691,34 @@ class Aoe_Scheduler_Model_Schedule extends Mage_Cron_Model_Schedule implements A
             return;
         }
 
-        $settings = array(
+        if ($this->errorSettingsBackup !== null) {
+            return;
+        }
+
+        $settings = [
             'error_reporting' => intval(Mage::getStoreConfig('system/cron/errorLevel')),
             'log_errors' => true,
             'display_errors' => true,
-            'error_log' => $this->getErrorLogFile()
-        );
-
-        restore_error_handler();
-        // (doesn't work for PHP 5.3) set_error_handler(null); // switch to PHP default error handling
+            'error_log' => $this->getErrorLogFile(),
+        ];
 
         if (!is_dir(dirname($settings['error_log']))) {
             mkdir(dirname($settings['error_log']), 0775, true);
         }
 
+        $errorHandler = set_error_handler(null); // switch to PHP default error handling
+
+        $this->errorSettingsBackup = [
+            'error_handler' => $errorHandler,
+        ];
+
         foreach ($settings as $key => $value) {
-            // backup original settings first
-            $this->errorSettingsBackup[$key] = ini_get($key);
-            // set new value
-            ini_set($key, $value);
+            $oldValue = ini_set($key, $value);
+            if ($oldValue === false) {
+                $this->log('Configuration option does not exist: ' . '"' . $key . '"', Zend_Log::WARN);
+                continue;
+            }
+            $this->errorSettingsBackup[$key] = $oldValue;
         }
     }
 
@@ -718,14 +727,18 @@ class Aoe_Scheduler_Model_Schedule extends Mage_Cron_Model_Schedule implements A
      */
     protected function restoreErrorContext()
     {
-        if (!Mage::getStoreConfigFlag('system/cron/enableErrorLog')) {
+        if ($this->errorSettingsBackup === null) {
             return;
         }
 
-        restore_error_handler();
+        set_error_handler($this->errorSettingsBackup['error_handler']);
+        unset($this->errorSettingsBackup['error_handler']);
+
         foreach ($this->errorSettingsBackup as $key => $value) {
             ini_set($key, $value);
         }
+
+        $this->errorSettingsBackup = null;
     }
 
     /**
