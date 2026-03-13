@@ -54,7 +54,7 @@ $_helper = $this->helper('aoe_scheduler/data'); /* @var $_helper Aoe_Scheduler_H
                 </tr>
                 <tr>
                     <td colspan="2">
-                        <pre><?php echo $_schedule->getMessages(); ?></pre>
+                        <pre><?php echo $this->escapeHtml($_schedule->getMessages()); ?></pre>
                     </td>
                 </tr>
             <?php endif; ?>
