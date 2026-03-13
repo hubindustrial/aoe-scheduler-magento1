@@ -5,8 +5,6 @@
  *
  * @method string setJobCode($jobCode)
  * @method string getJobCode()
- * @method $this setMessages($messages)
- * @method string getMessages()
  * @method $this setExecutedAt($executedAt)
  * @method string|null getExecutedAt()
  * @method $this setCreatedAt($createdAt)
@@ -39,7 +37,7 @@
  * @method Aoe_Scheduler_Model_Resource_Schedule getResource()
  * @method Aoe_Scheduler_Model_Resource_Schedule _getResource()
  */
-class Aoe_Scheduler_Model_Schedule extends Mage_Cron_Model_Schedule
+class Aoe_Scheduler_Model_Schedule extends Mage_Cron_Model_Schedule implements Aoe_Scheduler_Model_MessagesStorage
 {
     // if a job returns 'repeat' it will be re-executed right away
     public const STATUS_REPEAT = 'repeat';
@@ -96,9 +94,33 @@ class Aoe_Scheduler_Model_Schedule extends Mage_Cron_Model_Schedule
     /**
      * Placeholder to keep track of active redirect buffer.
      *
+     * **Deprecated:** See {@link static::$outputHandler}
+     *
      * @var bool
+     * @deprecated See {@link static::$outputHandler}
+     * @see static::$outputHandler
      */
     protected $_redirect = false;
+
+    /**
+     * Output buffer handler ("redirect").
+     *
+     * When this property is `null`, this instance is not buffering
+     * output.
+     *
+     * @var null|Aoe_Scheduler_Model_Schedule_OutputHandler
+     */
+    protected null|Aoe_Scheduler_Model_Schedule_OutputHandler $outputHandler = null;
+
+    /**
+     * Output buffer handler registration data.
+     *
+     * When this property is `null`, this instance is not buffering
+     * output.
+     *
+     * @var null|array{level: int, name: string, flags: int}
+     */
+    protected null|array $outputBufferStatus = null;
 
     /**
      * The buffer will be flushed after any output call which causes
@@ -724,51 +746,180 @@ class Aoe_Scheduler_Model_Schedule extends Mage_Cron_Model_Schedule
 
     /**
      * Redirect all output to the messages field of this Schedule.
-     * We use ob_start with `_addBufferToMessages` to redirect the output.
+     *
+     * This uses PHP's output buffering system. See: {@link ob_start()},
+     * {@link ob_get_status()}, {@link ob_list_handlers()},
+     * {@link ob_end_flush()}, etc.
+     *
+     * **WARNING:** Output buffering involves cooperative manipulation
+     * of global mutable state. Any other code in this process may interfere
+     * and cause inconsistent state by doing anti-social things such as:
+     * - starting an output buffer without {@link PHP_OUTPUT_HANDLER_REMOVABLE},
+     * - removing the buffer we start with calls to {@link ob_end_flush()}
+     *   and/or {@link ob_end_clean()},
+     * - removing the output buffer we start and then starting a different
+     *   output buffer at the same "level" and with the same name (names are
+     *   public, deterministic, and controlled by the PHP engine).
+     *
+     * The safest course of action with output buffering is to put as little
+     * logic as possible between calls to
+     * {@link static::_startBufferToMessages()} and
+     * {@link static::_stopBufferToMessages()}.
      *
      * @return $this
+     * @see self::_stopBufferToMessages()
+     * @see ob_start()
+     * @see ob_get_status()
+     * @see ob_list_handlers()
+     * @see ob_end_flush()
      */
-    protected function _startBufferToMessages()
+    protected function _startBufferToMessages(): static
     {
+        if ($this->isBufferingOutput()) {
+            return $this;
+        }
+
+        if (!$this->isNotBufferingOutput()) {
+            // Should be unreachable, but with inheritance you never know.
+            $this->log(
+                'Inconsistent state: ' . var_export([
+                    '$this->outputBufferStatus === null' => $this->outputBufferStatus === null,
+                    '$this->outputHandler === null' => $this->outputHandler === null,
+                    '$this->_redirect' => $this->_redirect,
+                ], return: true),
+                Zend_Log::WARN,
+            );
+            $this->_stopBufferToMessages();
+        }
+
         if (!Mage::getStoreConfigFlag('system/cron/enableJobOutputBuffer')) {
             return $this;
         }
 
-        if ($this->_redirect) {
-            return $this;
-        }
+        /** @var Aoe_Scheduler_Model_Schedule_OutputHandler $outputHandler */
+        $outputHandler = Mage::getModel('aoe_scheduler/schedule_outputHandler', $this);
 
-        $this->addMessages('---START---' . PHP_EOL);
-
-        ob_start(
-            array($this, '_addBufferToMessages'),
-            $this->_redirectOutputHandlerChunkSize
+        $success = ob_start(
+            [$this, '_addBufferToMessages'],
+            chunk_size: $this->_redirectOutputHandlerChunkSize,
+            flags: $outputHandler->getFlags(),
         );
 
-        $this->_redirect = true;
+        if ($success) {
+            $status = ob_get_status();
+            $this->outputBufferStatus = [
+                'level' => $status['level'],
+                'name' => $status['name'],
+                'flags' => $outputHandler->getFlags(),
+            ];
+            $this->outputHandler = $outputHandler;
+            $this->_redirect = true;
+        } else {
+            $this->log(
+                'Failed to start output buffer. Debug Info: ' . var_export([
+                    // NOTE: 'callback' describes ob_start first argument
+                    'callback' => $this::class . '::_addBufferToMessages',
+                    'chunkSize (bytes)' => $this->_redirectOutputHandlerChunkSize,
+                    'outputHandler' => [
+                        'class' => get_class($outputHandler),
+                        'flags' => $outputHandler->getFlags(),
+                    ],
+                ], return: true),
+                Zend_Log::WARN,
+            );
+        }
 
         return $this;
     }
 
+    protected function isBufferingOutput(): bool
+    {
+        return $this->outputBufferStatus !== null &&
+            $this->outputHandler !== null &&
+            $this->_redirect;
+    }
+
+
+    protected function isNotBufferingOutput(): bool
+    {
+        return $this->outputBufferStatus === null &&
+            $this->outputHandler === null &&
+            !$this->_redirect;
+    }
+
     /**
      * Stop redirecting all output to the messages field of this Schedule.
-     * We use ob_end_flush to stop redirecting the output.
+     *
+     * This uses PHP's output buffering system. See: {@link ob_start()},
+     * {@link ob_get_status()}, {@link ob_list_handlers()},
+     * {@link ob_end_flush()}, etc.
+     *
+     * **WARNING:** It is possible, though unlikely, for this method to affect
+     * other output buffers. It will search the current output buffer
+     * hierarchy for one matching the buffer started by a call to
+     * {@link self::_startBufferToMessages()}. It will then proceed to flush
+     * and remove buffers from the stack until the matching one has been
+     * flushed and removed. If an unremovable buffer has been started after
+     * {@link self::_startBufferToMessages()}, this method will flush and
+     * remove buffers before the first unremovable one, which will be flushed,
+     * but not removed. A message will be logged in such cases.
      *
      * @return $this
+     * @see self::_startBufferToMessages()
+     * @see ob_start()
+     * @see ob_get_status()
+     * @see ob_list_handlers()
+     * @see ob_end_flush()
      */
-    protected function _stopBufferToMessages()
+    protected function _stopBufferToMessages(): static
     {
-        if (!Mage::getStoreConfigFlag('system/cron/enableJobOutputBuffer')) {
-            return $this;
+        if ($this->outputBufferStatus !== null) {
+            /** @var array<int, array{level: int, type: int, flags: int, name: string}> $statuses */
+            $statuses = ob_get_status(full_status: true);
+            /** @var null|array{level: int, type: int, flags: int, name: string} $targetStatus */
+            $targetStatus = $statuses[$this->outputBufferStatus['level']] ?? null;
+            if (
+                $targetStatus !== null &&
+                $targetStatus['type'] === 1 &&
+                $targetStatus['level'] === $this->outputBufferStatus['level'] &&
+                $targetStatus['name'] === $this->outputBufferStatus['name'] &&
+                ($targetStatus['flags'] & $this->outputBufferStatus['flags']) === $this->outputBufferStatus['flags']
+            ) {
+                while (($status = ob_get_status()) && $status['level'] >= $targetStatus['level']) {
+                    if (!@ob_end_flush()) {
+                        // TODO - replace with exception?
+                        $this->log(
+                            'Unable to remove output buffer because there is ' .
+                            'an unremovable buffer on the stack.' .
+                            PHP_EOL .
+                            var_export([
+                                '$this->outputBufferStatus' => $this->outputBufferStatus,
+                                'ob_get_status()' => $statuses,
+                            ], return: true),
+                            Zend_Log::WARN,
+                        );
+
+                        return $this;
+                    }
+                }
+            } else {
+                // TODO - replace with exception?
+                $this->log(
+                    'Expected output buffer not found. ' .
+                    'Perhaps it was removed by someone else.' .
+                    PHP_EOL .
+                    var_export([
+                        '$this->outputBufferStatus' => $this->outputBufferStatus,
+                        'ob_get_status()' => $statuses,
+                    ], return: true),
+                    Zend_Log::NOTICE,
+                );
+            }
+
+            $this->outputBufferStatus = null;
         }
 
-        if (!$this->_redirect) {
-            return $this;
-        }
-
-        ob_end_flush();
-        $this->addMessages('---END---' . PHP_EOL);
-
+        $this->outputHandler = null;
         $this->_redirect = false;
 
         return $this;
@@ -778,16 +929,33 @@ class Aoe_Scheduler_Model_Schedule extends Mage_Cron_Model_Schedule
      * Used as callback function to redirect the output buffer
      * directly into the messages field of this schedule.
      *
-     * @param $buffer
+     * @deprecated This will be removed in a future version. Use a custom
+     * {@link static::$outputHandler} instead of overriding this method.
+     *
+     * @param string $buffer
+     * @param int $phase
      *
      * @return string
      */
-    public function _addBufferToMessages($buffer)
+    public function _addBufferToMessages($buffer, int $phase = PHP_OUTPUT_HANDLER_CONT)
     {
-        $this->addMessages($buffer)
-            ->saveMessages(); // Save the directly to the schedule record.
+        if ($this->outputHandler === null) {
+            $this->addMessages($buffer)
+                ->saveMessages();
+            return $buffer;
+        } else {
+            return $this->outputHandler->handleOutput((string) $buffer, $phase);
+        }
+    }
 
-        return $buffer;
+    public function getMessages(): string
+    {
+        return (string) $this->getData('messages');
+    }
+
+    public function setMessages(string $value): static
+    {
+        return $this->setData('messages', $value);
     }
 
     /**
